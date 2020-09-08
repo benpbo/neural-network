@@ -32,8 +32,10 @@ class NeuralNetwork:
         gradient for the cost function C_x.  ``nabla_b`` and
         ``nabla_w`` are layer-by-layer lists of numpy arrays, similar
         to ``self.biases`` and ``self.weights``."""
-        nabla_bs = [np.zeros(b.shape) for b in self.biases]
-        nabla_ws = [np.zeros(w.shape) for w in self.weights]
+        def get_nabla_b(d): return np.add.reduce(d)
+        def get_nable_w(d, a): return np.add.reduce(d @ a.transpose((0, 2, 1)))
+        nabla_b = [np.zeros(b.shape) for b in self.biases]
+        nabla_w = [np.zeros(w.shape) for w in self.weights]
 
         # feedforward
         activation = xs
@@ -45,23 +47,20 @@ class NeuralNetwork:
             activation = sigmoid(z)
             activations.append(activation)
 
-        # backward pass TODO: vectorize
-        delta = self.cost_derivative(activations[-1], ys) * sigmoid_prime(zs[-1])
-        nabla_bs[-1] = delta[0]
-        nabla_ws[-1] = delta[0] @ activations[-2][0].transpose()
         # Note that the variable l in the loop below is used a little
         # differently to the notation in Chapter 2 of the book.  Here,
         # l = 1 means the last layer of neurons, l = 2 is the
         # second-last layer, and so on.  It's a renumbering of the
         # scheme in the book, used here to take advantage of the fact
         # that Python can use negative indices in lists.
+        delta = self.cost_derivative(activations[-1], ys) * sigmoid_prime(zs[-1])
+        nabla_b[-1] = get_nabla_b(delta)
+        nabla_w[-1] = get_nable_w(delta, activations[-2])
         for l in range(2, self.num_layers):
-            z = zs[-l]
-            sp = sigmoid_prime(z)
-            delta = (self.weights[-l+1].transpose() @ delta) * sp
-            nabla_bs[-l] += delta[0]
-            nabla_ws[-l] += delta[0] @ activations[-l-1][0].transpose()
-        return nabla_bs, nabla_ws
+            delta = (self.weights[-l+1].transpose() @ delta) * sigmoid_prime(zs[-l])
+            nabla_b[-l] = get_nabla_b(delta)
+            nabla_w[-l] = get_nable_w(delta, activations[-l-1])
+        return nabla_b, nabla_w
 
     def update_mini_batch(self, mini_batch, eta):
         """Update the network's weights and biases by applying
@@ -72,16 +71,18 @@ class NeuralNetwork:
         nabla_w = [np.zeros(w.shape) for w in self.weights]
 
         xs, ys = mini_batch
-        delta_nabla_b, delta_nabla_w = self.backprop(list(xs), list(ys))
+        delta_nabla_b, delta_nabla_w = self.backprop(
+            np.array(xs), np.array(ys))
         nabla_b = [nb+dnb for nb, dnb in zip(nabla_b, delta_nabla_b)]
         nabla_w = [nw+dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
 
+        batch_length = len(xs)
         self.weights = [
-            w-(eta/len(mini_batch))*nw
+            w-(eta/batch_length)*nw
             for w, nw in zip(self.weights, nabla_w)
         ]
         self.biases = [
-            b-(eta/len(mini_batch))*nb
+            b-(eta/batch_length)*nb
             for b, nb in zip(self.biases, nabla_b)
         ]
 
@@ -101,11 +102,8 @@ class NeuralNetwork:
         for j in range(epochs):
             random.shuffle(training_data)
             mini_batches = [
-                list(zip(*mini_batch))
-                for mini_batch in [
-                    training_data[k:k+mini_batch_size]
-                    for k in range(0, n, mini_batch_size)
-                ]
+                zip(*training_data[k:k+mini_batch_size])
+                for k in range(0, n, mini_batch_size)
             ]
 
             for mini_batch in mini_batches:
