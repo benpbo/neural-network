@@ -17,4 +17,4 @@ validation_data = (validation_images, validation_labels)
 
 
 net = NeuralNetwork(28**2, 15, 10)
-net.SGD(training_data, 30, 10, 3.0, test_data=test_data)
+net.SGD(training_data, 30, 10, 0.5, test_data=test_data)

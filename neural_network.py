@@ -1,11 +1,49 @@
-import numpy as np
+import json
 import random
+import sys
+import numpy as np
 
-from concurrent.futures import ThreadPoolExecutor
+
+class QuadraticCost(object):
+
+    @staticmethod
+    def fn(a, y):
+        """Return the cost associated with an output ``a`` and desired output
+        ``y``.
+        """
+        return 0.5*np.linalg.norm(a-y)**2
+
+    @staticmethod
+    def delta(z, a, y):
+        """Return the error delta from the output layer."""
+        return (a-y) * sigmoid_prime(z)
+
+
+class CrossEntropyCost(object):
+
+    @staticmethod
+    def fn(a, y):
+        """Return the cost associated with an output ``a`` and desired output
+        ``y``.  Note that np.nan_to_num is used to ensure numerical
+        stability.  In particular, if both ``a`` and ``y`` have a 1.0
+        in the same slot, then the expression (1-y)*np.log(1-a)
+        returns nan.  The np.nan_to_num ensures that that is converted
+        to the correct value (0.0).
+        """
+        return np.sum(np.nan_to_num(-y*np.log(a) - (1-y)*np.log(1-a)))
+
+    @staticmethod
+    def delta(z, a, y):
+        """Return the error delta from the output layer.  Note that the
+        parameter ``z`` is not used by the method.  It is included in
+        the method's parameters in order to make the interface
+        consistent with the delta method for other cost classes.
+        """
+        return (a-y)
 
 
 class NeuralNetwork:
-    def __init__(self, *layer_sizes: list):
+    def __init__(self, *layer_sizes: list, cost=CrossEntropyCost):
         """The list ``sizes`` contains the number of neurons in the
         respective layers of the network.  For example, if the list
         was [2, 3, 1] then it would be a three-layer network, with the
@@ -18,9 +56,22 @@ class NeuralNetwork:
         ever used in computing the outputs from later layers."""
         self.num_layers = len(layer_sizes)
         self.layer_sizes = layer_sizes
-        self.biases = [np.random.randn(y, 1) for y in layer_sizes[1:]]
+        self.large_weight_initializer()
+        self.cost = cost
+
+    def large_weight_initializer(self):
+        """Initialize the weights using a Gaussian distribution with mean 0
+        and standard deviation 1.  Initialize the biases using a
+        Gaussian distribution with mean 0 and standard deviation 1.
+        Note that the first layer is assumed to be an input layer, and
+        by convention we won't set any biases for those neurons, since
+        biases are only ever used in computing the outputs from later
+        layers.
+        """
+        self.biases = [np.random.randn(y, 1) for y in self.layer_sizes[1:]]
         self.weights = [
-            np.random.randn(x, y) for x, y in zip(layer_sizes[1:], layer_sizes[:-1])
+            np.random.randn(x, y)
+            for x, y in zip(self.layer_sizes[1:], self.layer_sizes[:-1])
         ]
 
     def feedforward(self, a: np.ndarray) -> np.ndarray:
@@ -55,13 +106,12 @@ class NeuralNetwork:
         # second-last layer, and so on.  It's a renumbering of the
         # scheme in the book, used here to take advantage of the fact
         # that Python can use negative indices in lists.
-        #delta = None
+        delta = None
         for l in range(1, self.num_layers):
-            try:
-                delta = (self.weights[-l+1].transpose() @ delta)
-            except UnboundLocalError:
-                delta = self.cost_derivative(activations[-1], ys)
-            delta *= sigmoid_prime(zs[-l])
+            if delta is not None:
+                delta = (self.weights[-l+1].transpose() @ delta) * sigmoid_prime(zs[-l])
+            else:
+                delta = (self.cost).delta(zs[-1], activations[-1], ys)
             nabla_b[-l] = get_nabla_b(delta)
             nabla_w[-l] = get_nable_w(delta, activations[-l-1])
         return nabla_b, nabla_w
@@ -87,6 +137,15 @@ class NeuralNetwork:
         self.biases = [b - (eta/batch_length) * nb
                        for b, nb in zip(self.biases, nabla_b)]
 
+    def evaluate(self, test_data):
+        """Return the number of test inputs for which the neural
+        network outputs the correct result. Note that the neural
+        network's output is assumed to be the index of whichever
+        neuron in the final layer has the highest activation."""
+        test_results = [(self.feedforward(x).argmax(), y.argmax())
+                        for (x, y) in test_data]
+        return sum(int(x == y) for (x, y) in test_results)
+
     def SGD(self, training_data, epochs, mini_batch_size, eta, test_data=None):
         """Train the neural network using mini-batch stochastic
         gradient descent.  The ``training_data`` is a list of tuples
@@ -103,19 +162,6 @@ class NeuralNetwork:
                 self.update_mini_batch(mini_batch, eta)
             text = f'Epoch {j}: {self.evaluate(test_data)} / {len(test_data)}' if test_data else f'Epoch {j} complete'
             print(text)
-
-    def evaluate(self, test_data):
-        """Return the number of test inputs for which the neural
-        network outputs the correct result. Note that the neural
-        network's output is assumed to be the index of whichever
-        neuron in the final layer has the highest activation."""
-        test_results = [(self.feedforward(x).argmax(), y.argmax())
-                        for (x, y) in test_data]
-        return sum(int(x == y) for (x, y) in test_results)
-
-    def cost_derivative(self, output_activations, y):
-        """Return the vector of partial derivatives for the output activations."""
-        return output_activations-y
 
 
 # Miscellaneous functions
