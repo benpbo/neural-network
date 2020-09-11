@@ -1,6 +1,8 @@
 import numpy as np
 import random
 
+from concurrent.futures import ThreadPoolExecutor
+
 
 class NeuralNetwork:
     def __init__(self, *layer_sizes: list):
@@ -24,7 +26,7 @@ class NeuralNetwork:
     def feedforward(self, a: np.ndarray) -> np.ndarray:
         """Return the output of the network for 'a' as input."""
         for w, b in zip(self.weights, self.biases):
-            a = sigmoid(w @ a + b)
+            a = sigmoid((w @ a) + b)
         return a
 
     def backprop(self, xs, ys):
@@ -53,11 +55,13 @@ class NeuralNetwork:
         # second-last layer, and so on.  It's a renumbering of the
         # scheme in the book, used here to take advantage of the fact
         # that Python can use negative indices in lists.
-        delta = self.cost_derivative(activations[-1], ys) * sigmoid_prime(zs[-1])
-        nabla_b[-1] = get_nabla_b(delta)
-        nabla_w[-1] = get_nable_w(delta, activations[-2])
-        for l in range(2, self.num_layers):
-            delta = (self.weights[-l+1].transpose() @ delta) * sigmoid_prime(zs[-l])
+        #delta = None
+        for l in range(1, self.num_layers):
+            try:
+                delta = (self.weights[-l+1].transpose() @ delta)
+            except UnboundLocalError:
+                delta = self.cost_derivative(activations[-1], ys)
+            delta *= sigmoid_prime(zs[-l])
             nabla_b[-l] = get_nabla_b(delta)
             nabla_w[-l] = get_nable_w(delta, activations[-l-1])
         return nabla_b, nabla_w
@@ -72,22 +76,18 @@ class NeuralNetwork:
 
         xs, ys = mini_batch
         delta_nabla_b, delta_nabla_w = self.backprop(
-            np.array(xs), np.array(ys))
+            np.array(xs), np.array(ys)
+        )
         nabla_b = [nb+dnb for nb, dnb in zip(nabla_b, delta_nabla_b)]
         nabla_w = [nw+dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
 
         batch_length = len(xs)
-        self.weights = [
-            w-(eta/batch_length)*nw
-            for w, nw in zip(self.weights, nabla_w)
-        ]
-        self.biases = [
-            b-(eta/batch_length)*nb
-            for b, nb in zip(self.biases, nabla_b)
-        ]
+        self.weights = [w - (eta/batch_length) * nw
+                        for w, nw in zip(self.weights, nabla_w)]
+        self.biases = [b - (eta/batch_length) * nb
+                       for b, nb in zip(self.biases, nabla_b)]
 
-    def SGD(self, training_data, epochs, mini_batch_size, eta,
-            test_data=None):
+    def SGD(self, training_data, epochs, mini_batch_size, eta, test_data=None):
         """Train the neural network using mini-batch stochastic
         gradient descent.  The ``training_data`` is a list of tuples
         ``(x, y)`` representing the training inputs and the desired
@@ -96,22 +96,13 @@ class NeuralNetwork:
         network will be evaluated against the test data after each
         epoch, and partial progress printed out.  This is useful for
         tracking progress, but slows things down substantially."""
-        if test_data:
-            n_test = len(test_data)
-        n = len(training_data)
         for j in range(epochs):
             random.shuffle(training_data)
-            mini_batches = [
-                zip(*training_data[k:k+mini_batch_size])
-                for k in range(0, n, mini_batch_size)
-            ]
-
-            for mini_batch in mini_batches:
+            for k in range(0, len(training_data), mini_batch_size):
+                mini_batch = zip(*training_data[k:k+mini_batch_size])
                 self.update_mini_batch(mini_batch, eta)
-            if test_data:
-                print(f"Epoch {j}: {self.evaluate(test_data)} / {n_test}")
-            else:
-                print(f"Epoch {j} complete")
+            text = f'Epoch {j}: {self.evaluate(test_data)} / {len(test_data)}' if test_data else f'Epoch {j} complete'
+            print(text)
 
     def evaluate(self, test_data):
         """Return the number of test inputs for which the neural
