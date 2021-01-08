@@ -1,4 +1,5 @@
 import random
+from typing import Tuple
 import numpy as np
 
 
@@ -41,7 +42,7 @@ class CrossEntropyCost(object):
 
 
 class NeuralNetwork:
-    def __init__(self, *layer_sizes: list, cost=CrossEntropyCost):
+    def __init__(self, *layer_sizes: Tuple[int], cost=CrossEntropyCost):
         """The list ``sizes`` contains the number of neurons in the
         respective layers of the network.  For example, if the list
         was [2, 3, 1] then it would be a three-layer network, with the
