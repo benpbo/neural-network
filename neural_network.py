@@ -1,6 +1,4 @@
-import json
 import random
-import sys
 import numpy as np
 
 
@@ -108,10 +106,11 @@ class NeuralNetwork:
         # that Python can use negative indices in lists.
         delta = None
         for l in range(1, self.num_layers):
-            if delta is not None:
-                delta = (self.weights[-l+1].transpose() @ delta) * sigmoid_prime(zs[-l])
-            else:
+            if delta is None:
                 delta = (self.cost).delta(zs[-1], activations[-1], ys)
+            else:
+                delta = (self.weights[-l+1].transpose()
+                         @ delta) * sigmoid_prime(zs[-l])
             nabla_b[-l] = get_nabla_b(delta)
             nabla_w[-l] = get_nable_w(delta, activations[-l-1])
         return nabla_b, nabla_w
